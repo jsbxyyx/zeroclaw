@@ -1,0 +1,78 @@
+name: Build musl (static) zeroclaw
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref (branch/tag/SHA) to build"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build x86_64-unknown-linux-musl
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cross
+        run: |
+          cargo install cross --locked
+
+      - name: Build (release-fast if present, else release)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -q '^\[profile\.release-fast\]' Cargo.toml; then
+            PROFILE_FLAG="--profile release-fast"
+            OUTDIR="target/x86_64-unknown-linux-musl/release-fast"
+          else
+            PROFILE_FLAG="--release"
+            OUTDIR="target/x86_64-unknown-linux-musl/release"
+          fi
+
+          cross build $PROFILE_FLAG --locked --target x86_64-unknown-linux-musl
+
+          test -f "$OUTDIR/zeroclaw"
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "target/x86_64-unknown-linux-musl/release-fast/zeroclaw" ]; then
+            BIN="target/x86_64-unknown-linux-musl/release-fast/zeroclaw"
+          else
+            BIN="target/x86_64-unknown-linux-musl/release/zeroclaw"
+          fi
+
+          mkdir -p dist
+          cp "$BIN" dist/zeroclaw
+          chmod +x dist/zeroclaw
+
+          file dist/zeroclaw || true
+          ldd dist/zeroclaw || true
+
+          tar czf zeroclaw-x86_64-unknown-linux-musl.tar.gz -C dist zeroclaw
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zeroclaw-x86_64-unknown-linux-musl
+          path: zeroclaw-x86_64-unknown-linux-musl.tar.gz
