@@ -1,0 +1,48 @@
+name: Build amd64 Ubuntu 22.04
+
+on:
+    push:
+        branches: [main, dev]
+        tags: ["v*"]
+    workflow_dispatch:
+
+concurrency:
+    group: build-amd64-ubuntu-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    build:
+        name: Build zeroclaw (x86_64-unknown-linux-gnu, ubuntu-22.04)
+        runs-on: ubuntu-22.04
+        timeout-minutes: 60
+
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+            - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # 1.92.0
+              with:
+                  toolchain: 1.92.0
+                  targets: x86_64-unknown-linux-gnu
+
+            - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v3
+
+            - name: Build release binary
+              run: cargo build --profile dist --locked --target x86_64-unknown-linux-gnu
+
+            - name: Package binary
+              run: |
+                  cd target/x86_64-unknown-linux-gnu/dist
+                  tar czf ../../../zeroclaw-x86_64-unknown-linux-gnu.tar.gz zeroclaw
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+              with:
+                  name: zeroclaw-x86_64-unknown-linux-gnu
+                  path: zeroclaw-x86_64-unknown-linux-gnu.tar.gz
+                  retention-days: 30
